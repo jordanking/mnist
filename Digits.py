@@ -119,9 +119,11 @@ def get_predictions(filename, X, y, model, nb_epoch, batch_size, save_weights_fi
         for e in range(nb_epoch):
             print('Epoch: ', e)
             # batch train with realtime data augmentation
+            accuracy = 0
             for X_batch, Y_batch in datagen.flow(X, y, batch_size):
-                loss = model.train(X_batch, Y_batch)
-            model.save_weights(save_weights_file)
+                loss, accuracy = model.train(X_batch, Y_batch, accuracy = True)
+            print('Accuracy: ', accuracy)
+            model.save_weights(save_weights_file, overwrite = True)
 
         # model.fit(X,y,
         #           batch_size=batch_size, 
@@ -153,7 +155,7 @@ def main():
     train_file = 'data/train.csv'
     test_file = 'data/test.csv'
     out_file = 'solutions/answers_pp_big.csv'
-    nb_epoch = 2
+    nb_epoch = 600
     folds = 5
     batch_size = 128
     nb_classes = 10
