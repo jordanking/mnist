@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+# author: Jordan King
+
 from __future__ import absolute_import
 from __future__ import print_function
 
@@ -141,11 +143,11 @@ def main():
     fancy_preprocess = True
     load_weights = False
     load_weights_file = 'weights/pp_3_12.hdf5'
-    save_weights_file = 'tmp/checkpoint_weights.hdf5'
+    save_weights_file = 'tmp/checkpoint_weights_big.hdf5'
     train_file = 'data/train.csv'
     test_file = 'data/test.csv'
-    out_file = 'solutions/answers_pp_4.csv'
-    nb_epoch = 12
+    out_file = 'solutions/answers_pp_big.csv'
+    nb_epoch = 600
     folds = 5
     batch_size = 128
     nb_classes = 10
