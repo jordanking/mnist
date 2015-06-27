@@ -26,7 +26,7 @@ def load_data(filename):
     data = np.genfromtxt(filename, delimiter=',', skip_header=1, dtype='float32')
     return [data[0::,1::], data[0::,0]]
 
-def preprocess_data(X, y, nb_classes, fancy):
+def preprocess_data(X, y, nb_classes):
     """ returns X and y as shaped for keras and normalized to [0,1]
         plus any fancy image preprocessing selected. """
 
@@ -34,28 +34,6 @@ def preprocess_data(X, y, nb_classes, fancy):
     X /= 255
 
     y = np_utils.to_categorical(y, nb_classes)
-
-    if fancy:
-        datagen = ImageDataGenerator(featurewise_center=False,
-                                        samplewise_center=False,
-                                        featurewise_std_normalization=False,
-                                        samplewise_std_normalization=False,
-                                        zca_whitening=False,
-                                        rotation_range=4,
-                                        width_shift_range=0.08,
-                                        height_shift_range=0.08,
-                                        horizontal_flip=False,
-                                        vertical_flip=False)
-        datagen.fit(X)
-
-        flow = datagen.flow(X, y, batch_size = len(y))
-
-        Xt, yt = flow.next()
-        np.savetxt('transx.out', Xt.reshape(Xt.shape[0], 784))
-
-        X = np.append(X, Xt, axis = 0)
-        y = np.append(y, yt, axis = 0)
-
 
     return [X, y]
 
@@ -86,6 +64,8 @@ def build_keras(nb_classes):
 
 def cross_validate(model, X, y, folds, nb_epoch, batch_size):
 
+    # TODO cross validate with batch updates
+
     kf = KFold(X.shape[0], folds)
     scores = []
 
@@ -114,14 +94,41 @@ def get_predictions(filename, X, y, model, nb_epoch, batch_size, save_weights_fi
     if load_weights:
         model.load_weights(load_weights_file)
     else:
-        checkpointer = ModelCheckpoint(filepath=save_weights_file, verbose=1, save_best_only=True)
+        # checkpointer = ModelCheckpoint(filepath=save_weights_file, verbose=1, save_best_only=True)
 
-        model.fit(X,y,
-                  batch_size=batch_size, 
-                  nb_epoch=nb_epoch, 
-                  show_accuracy=True, 
-                  verbose=1, 
-                  callbacks=[checkpointer])
+
+        datagen = ImageDataGenerator(featurewise_center=False,
+                                        samplewise_center=False,
+                                        featurewise_std_normalization=False,
+                                        samplewise_std_normalization=False,
+                                        zca_whitening=False,
+                                        rotation_range=5,
+                                        width_shift_range=0.11,
+                                        height_shift_range=0.11,
+                                        horizontal_flip=False,
+                                        vertical_flip=False)
+        datagen.fit(X)
+
+        # flow = datagen.flow(X, y, batch_size = len(y))
+
+        # Xt, yt = flow.next()
+
+        # X = np.append(X, Xt, axis = 0)
+        # y = np.append(y, yt, axis = 0)
+
+        for e in range(nb_epoch):
+            print('Epoch: ', e)
+            # batch train with realtime data augmentation
+            for X_batch, Y_batch in datagen.flow(X, y, batch_size):
+                loss = model.train(X_batch, Y_batch)
+            model.save_weights(save_weights_file)
+
+        # model.fit(X,y,
+        #           batch_size=batch_size, 
+        #           nb_epoch=nb_epoch, 
+        #           show_accuracy=True, 
+        #           verbose=1, 
+        #           callbacks=[checkpointer])
 
     test_data = np.genfromtxt(filename, delimiter=',', skip_header=1, dtype='float32')
     test_data = test_data.reshape(test_data.shape[0], 1, 28, 28)
@@ -140,14 +147,13 @@ def save_predictions(predictions, filename):
 def main():
 
     mode = 'pred'
-    fancy_preprocess = True
     load_weights = False
     load_weights_file = 'weights/pp_3_12.hdf5'
     save_weights_file = 'tmp/checkpoint_weights_big.hdf5'
     train_file = 'data/train.csv'
     test_file = 'data/test.csv'
     out_file = 'solutions/answers_pp_big.csv'
-    nb_epoch = 600
+    nb_epoch = 2
     folds = 5
     batch_size = 128
     nb_classes = 10
@@ -160,7 +166,7 @@ def main():
         X, y = load_data(train_file)
 
         print('preprocessing data...')
-        X, y = preprocess_data(X, y, nb_classes, fancy_preprocess)
+        X, y = preprocess_data(X, y, nb_classes)
 
     print('building model...')
     model = build_keras(nb_classes)
