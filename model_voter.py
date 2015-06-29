@@ -21,9 +21,11 @@ def tally_votes(votes):
 
     for i in range(28000):
         modes, counts = mode(votes[i,:])
-        if counts[0] != 3:
+        if counts[0] != votes.shape[1]:
             print(i, ': ', votes[i,:], ':=',modes[0])
-            if counts[0] == 2:
+
+            # if there is one mode, the models could resolve the vote.
+            if len(counts) == 1:
                 resolved += 1
             else:
                 unresolved += 1
@@ -47,8 +49,8 @@ def save_predictions(predictions, filename):
 
 def main():
 
-    model_file = 'solutions/answers_vote.csv'
-    model_files = ['solutions/answers_pp_1.csv', 'solutions/answers_pp_2.csv', 'solutions/answers_pp_3.csv']
+    model_file = 'solutions/answers_vote_4.csv'
+    model_files = ['solutions/answers_pp_1.csv', 'solutions/answers_pp_2.csv', 'solutions/answers_pp_3.csv', 'solutions/answers_pp_big.csv']
     votes = np.zeros((28000, len(model_files)))
 
     print('loading data...')
