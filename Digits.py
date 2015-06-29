@@ -137,9 +137,18 @@ def build_keras(nb_classes):
     model.add(MaxPooling2D(poolsize=(2, 2)))
     model.add(Dropout(0.25))
 
+    model.add(Convolution2D(64, 32, 3, 3, border_mode='full')) 
+    model.add(Activation('relu'))
+
+    model.add(Convolution2D(64, 64, 3, 3))
+    model.add(Activation('relu'))
+
+    model.add(MaxPooling2D(poolsize=(2, 2)))
+    model.add(Dropout(0.25))
+
     model.add(Flatten())
 
-    model.add(Dense(32*196, 128))
+    model.add(Dense(32*196/2, 128))
     model.add(Activation('relu'))
     model.add(Dropout(0.5))
 
@@ -160,7 +169,7 @@ def fit_model(model, X, y, nb_epoch, batch_size, save_weights_file, datagen):
         total_loss = 0
         current = 0
         for X_batch, y_batch in datagen.flow(X, y, batch_size):
-            # X_batch, y_batch = batch_warp(X_batch, y_batch)
+            X_batch, y_batch = batch_warp(X_batch, y_batch)
             loss, accuracy = model.train(X_batch, y_batch, accuracy = True)
 
             total_loss += loss * batch_size
@@ -233,7 +242,7 @@ def main():
     test_file = 'data/test.csv'
     out_file = 'solutions/answers_warp.csv'
 
-    nb_epoch = 1
+    nb_epoch = 45
     batch_size = 384
     nb_classes = 10
 
@@ -260,6 +269,7 @@ def main():
                                             batch_size = batch_size, save_weights_file = save_weights_file,
                                             load_weights_file = load_weights_file, load_weights = load_weights,
                                             datagen = datagen), out_file)
+    return 1
 
 if __name__ == '__main__':
     main()
