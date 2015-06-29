@@ -54,9 +54,9 @@ def load_data(filename, nb_classes, subset = 1):
                                         featurewise_std_normalization=False,
                                         samplewise_std_normalization=False,
                                         zca_whitening=False,
-                                        rotation_range=0.,#5
-                                        width_shift_range=0.,#.11
-                                        height_shift_range=0.,#.11
+                                        rotation_range=0,
+                                        width_shift_range=0.,
+                                        height_shift_range=0.,
                                         horizontal_flip=False,
                                         vertical_flip=False)
     datagen.fit(X)
@@ -160,7 +160,7 @@ def fit_model(model, X, y, nb_epoch, batch_size, save_weights_file, datagen):
         total_loss = 0
         current = 0
         for X_batch, y_batch in datagen.flow(X, y, batch_size):
-            # X_batch, y_batch = batch_warp(X_batch, y_batch)
+            #X_batch, y_batch = batch_warp(X_batch, y_batch)
             loss, accuracy = model.train(X_batch, y_batch, accuracy = True)
 
             total_loss += loss * batch_size
@@ -176,6 +176,8 @@ def fit_model(model, X, y, nb_epoch, batch_size, save_weights_file, datagen):
     return model
 
 def cross_validate(model, X, y, folds, nb_epoch, batch_size, save_weights_file, datagen):
+    ''' provides a simple cross validation measurement. It doen't make a new
+    model for each fold though, so it isn't actually cross validation... '''
 
     kf = KFold(X.shape[0], folds)
     scores = []
@@ -194,7 +196,7 @@ def cross_validate(model, X, y, folds, nb_epoch, batch_size, save_weights_file, 
     print("Accuracy: " + str(scores.mean()) + " (+/- " + str(scores.std()/2) + ")")
 
 def get_predictions(filename, X, y, model, nb_epoch, batch_size, save_weights_file, load_weights_file, load_weights, datagen):
-    """ returns a numpy array with predictions for the test file """
+    """ trains and predicts on the mnist data """
 
     if load_weights:
         model.load_weights(load_weights_file)
@@ -208,6 +210,8 @@ def get_predictions(filename, X, y, model, nb_epoch, batch_size, save_weights_fi
     return model.predict_classes(test_data, batch_size = batch_size)
 
 def save_predictions(predictions, filename):
+    ''' saves the predictions to file in a format that kaggle likes. '''
+
     predictions_file = open(filename, "wb")
     open_file_object = csv.writer(predictions_file, quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
     open_file_object.writerow(['ImageId','Label'])
@@ -219,7 +223,7 @@ def main():
 
     mode = 'test'
     folds = 5
-    subset = .2
+    subset = 1
 
     load_weights = False
     load_weights_file = 'weights/pp_3_12.hdf5'
@@ -230,7 +234,7 @@ def main():
     out_file = 'solutions/answers_warp.csv'
 
     nb_epoch = 8
-    batch_size = 256
+    batch_size = 384
     nb_classes = 10
 
     X = None
