@@ -75,20 +75,18 @@ def build_keras(nb_classes):
 
 def cross_validate(model, X, y, folds, nb_epoch, batch_size, datagen):
 
-    # TODO cross validate with batch updates
-
     kf = KFold(X.shape[0], folds)
     scores = []
 
     for train, test in kf:
         X_train, X_test, y_train, y_test = X[train], X[test], y[train], y[test]
-    
-        model.fit(X_train,y_train,
-                  batch_size=batch_size, 
-                  nb_epoch=nb_epoch, 
-                  show_accuracy=True, 
-                  verbose=1, 
-                  validation_data=(X_test, y_test))
+
+        for e in range(nb_epoch):
+            print('Epoch: ', e)
+
+            # batch train with realtime data augmentation
+            for X_batch, Y_batch in datagen.flow(X, y, batch_size):
+                loss = model.train(X_batch, Y_batch)
         
         loss, score = model.evaluate(X_test, y_test, show_accuracy=True, verbose=0)
         print ('Loss: ' + str(loss))
@@ -97,7 +95,6 @@ def cross_validate(model, X, y, folds, nb_epoch, batch_size, datagen):
     
     scores = np.array(scores)
     print("Accuracy: " + str(scores.mean()) + " (+/- " + str(scores.std()/2) + ")")
-    return scores
 
 def get_predictions(filename, X, y, model, nb_epoch, batch_size, save_weights_file, load_weights_file, load_weights, datagen):
     """ returns a numpy array with predictions for the test file """
@@ -125,21 +122,24 @@ def save_predictions(predictions, filename):
     predictions_file = open(filename, "wb")
     open_file_object = csv.writer(predictions_file, quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
     open_file_object.writerow(['ImageId','Label'])
-    for i in np.arange(1,28001):
-        open_file_object.writerow([i, predictions[i-1]])
+    for i in range(0,28000):
+        open_file_object.writerow([i+1, predictions[i]])
     predictions_file.close()
 
 def main():
 
     mode = 'pred'
+    folds = 5
+
     load_weights = False
     load_weights_file = 'weights/pp_3_12.hdf5'
+
     save_weights_file = 'tmp/checkpoint_weights.hdf5'
     train_file = 'data/train.csv'
     test_file = 'data/test.csv'
     out_file = 'solutions/answers_pp_12.csv'
+
     nb_epoch = 12
-    folds = 5
     batch_size = 128
     nb_classes = 10
 
@@ -157,6 +157,7 @@ def main():
     if mode == 'test' or mode == 'both':
         print('evaluating model...')
         cross_validate(model, X = X, y = y, folds = folds, nb_epoch = nb_epoch, batch_size = batch_size, datagen = datagen)
+        
     if mode == 'pred' or mode == 'both':
         print('obtaining predictions...')
         save_predictions(get_predictions(test_file, X = X, y = y, 
