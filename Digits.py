@@ -177,7 +177,7 @@ def get_predictions(filename, X, y, model, nb_epoch, batch_size, save_weights_fi
     else:
         for e in range(nb_epoch):
             print('Epoch: ', e)
-            progbar = Progbar(target=X.shape[0], verbose=self.verbose)
+            progbar = Progbar(target=X.shape[0], verbose=True)
 
             # batch train with realtime data augmentation
             total_accuracy = 0
@@ -188,13 +188,13 @@ def get_predictions(filename, X, y, model, nb_epoch, batch_size, save_weights_fi
                 X_batch, y_batch = batch_warp(X_batch, y_batch)
                 loss, accuracy = model.train(X_batch, y_batch, accuracy = True)
 
-                total_loss += loss
-                total_accuracy += accuracy
+                total_loss += loss * batch_size
+                total_accuracy += accuracy * batch_size
 
                 current += batch_size
                 if current > X.shape[0]:
                     current = X.shape[0]
-                progbar.update(batch_size, [('loss', loss), ('acc.', accuracy)])
+                progbar.update(current, [('loss', loss), ('acc.', accuracy)])
 
             progbar.update(current, [('loss', total_loss/current), ('acc.', total_accuracy/current)])
             model.save_weights(save_weights_file, overwrite = True)
@@ -215,7 +215,7 @@ def save_predictions(predictions, filename):
 
 def main():
 
-    mode = 'test'
+    mode = 'pred'
     folds = 2
 
     load_weights = False
@@ -227,7 +227,7 @@ def main():
     out_file = 'solutions/answers_warp.csv'
 
     nb_epoch = 1
-    batch_size = 128
+    batch_size = 384
     nb_classes = 10
 
     X = None
