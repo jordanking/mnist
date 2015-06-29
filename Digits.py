@@ -11,6 +11,8 @@ import pandas as pd
 import csv as csv
 
 from sklearn.cross_validation import KFold
+from sklearn.cross_validation import train_test_split
+from sklearn.preprocessing import OneHotEncoder
 
 from keras.models import Sequential
 from keras.layers.core import Dense, Dropout, Activation, Flatten
@@ -21,10 +23,6 @@ from keras.layers.advanced_activations import PReLU
 from keras.callbacks import ModelCheckpoint
 from keras.utils.generic_utils import Progbar, printv
 
-#### from https://github.com/FlorianMuellerklein/lasagne_mnist/blob/master/helpers.py
-from sklearn.cross_validation import train_test_split
-from sklearn.preprocessing import OneHotEncoder
-
 from random import randint, uniform
 
 from matplotlib import pyplot
@@ -32,9 +30,43 @@ from skimage.io import imshow
 from skimage.util import crop
 from skimage import transform, filters, exposure
 
+def load_data(filename, nb_classes, subset = 1):
+    """ returns X and y - data and target - as numpy arrays, X normalized
+    and y made categorical. """
 
-def fast_warp(img, tf, output_shape, mode='nearest'):
-    return transform._warps_cy._warp_fast(img, tf.params, output_shape=output_shape, mode=mode)
+    data = np.genfromtxt(filename, delimiter=',', skip_header=1, dtype='float32')
+
+    if subset != 1:
+        np.random.shuffle(data)
+        data = data[0:int(subset*data.shape[0]):, ::]
+
+    X = data[0::,1::]
+    X = X.reshape(X.shape[0], 1, 28, 28)
+    X /= 255
+
+    y = data[0::,0]
+    y = np_utils.to_categorical(y, nb_classes)
+
+    
+
+    datagen = ImageDataGenerator(featurewise_center=False,
+                                        samplewise_center=False,
+                                        featurewise_std_normalization=False,
+                                        samplewise_std_normalization=False,
+                                        zca_whitening=False,
+                                        rotation_range=0.,#5
+                                        width_shift_range=0.,#.11
+                                        height_shift_range=0.,#.11
+                                        horizontal_flip=False,
+                                        vertical_flip=False)
+    datagen.fit(X)
+
+    return [X, y, datagen]
+
+#### from https://github.com/FlorianMuellerklein/lasagne_mnist/blob/master/helpers.py
+
+# def fast_warp(img, tf, output_shape, mode='nearest'):
+#     return transform._warps_cy._warp_fast(img, tf.params, output_shape=output_shape, mode=mode)
 
 def batch_warp(X_batch, y_batch):
     '''
@@ -80,7 +112,10 @@ def batch_warp(X_batch, y_batch):
 
     # images in the batch do the augmentation
     for j in range(X_batch.shape[0]):
-        X_batch_aug[j][0] = fast_warp(X_batch[j][0], tform, output_shape = (PIXELS, PIXELS))
+        X_batch_aug[j][0] = transform._warps_cy._warp_fast(X_batch[j][0], tform.params, (PIXELS, PIXELS))
+
+        # return transform._warps_cy._warp_fast(X_batch[j][0], tform.params, (PIXELS, PIXELS))
+
 
     # use sobel edge detector filter on one quarter of the images
     indices_sobel = np.random.choice(X_batch_aug.shape[0], X_batch_aug.shape[0] / 4, replace = False)
@@ -91,34 +126,6 @@ def batch_warp(X_batch, y_batch):
     return [X_batch_aug, y_batch]
 
 #### end https://github.com/FlorianMuellerklein/lasagne_mnist/blob/master/helpers.py
-
-
-def load_data(filename, nb_classes):
-    """ returns X and y - data and target - as numpy arrays, X normalized
-    and y made categorical. """
-
-    data = np.genfromtxt(filename, delimiter=',', skip_header=1, dtype='float32')
-
-    X = data[0::,1::]
-    X = X.reshape(X.shape[0], 1, 28, 28)
-    X /= 255
-
-    y = data[0::,0]
-    y = np_utils.to_categorical(y, nb_classes)
-
-    datagen = ImageDataGenerator(featurewise_center=False,
-                                        samplewise_center=False,
-                                        featurewise_std_normalization=False,
-                                        samplewise_std_normalization=False,
-                                        zca_whitening=False,
-                                        rotation_range=0.,#5
-                                        width_shift_range=0.,#.11
-                                        height_shift_range=0.,#.11
-                                        horizontal_flip=False,
-                                        vertical_flip=False)
-    datagen.fit(X)
-
-    return [X, y, datagen]
 
 def build_keras(nb_classes):
 
@@ -132,7 +139,16 @@ def build_keras(nb_classes):
 
     model.add(MaxPooling2D(poolsize=(2, 2)))
     model.add(Dropout(0.25))
+#
+    # model.add(Convolution2D(32, 1, 3, 3, border_mode='full')) 
+    # model.add(Activation('relu'))
 
+    # model.add(Convolution2D(32, 32, 3, 3))
+    # model.add(Activation('relu'))
+
+    # model.add(MaxPooling2D(poolsize=(2, 2)))
+    # model.add(Dropout(0.25))
+#
     model.add(Flatten())
 
     model.add(Dense(32*196, 128))
@@ -185,7 +201,7 @@ def get_predictions(filename, X, y, model, nb_epoch, batch_size, save_weights_fi
             current = 0
             for X_batch, y_batch in datagen.flow(X, y, batch_size):
 
-                X_batch, y_batch = batch_warp(X_batch, y_batch)
+                # X_batch, y_batch = batch_warp(X_batch, y_batch)
                 loss, accuracy = model.train(X_batch, y_batch, accuracy = True)
 
                 total_loss += loss * batch_size
@@ -194,7 +210,8 @@ def get_predictions(filename, X, y, model, nb_epoch, batch_size, save_weights_fi
                 current += batch_size
                 if current > X.shape[0]:
                     current = X.shape[0]
-                progbar.update(current, [('loss', loss), ('acc.', accuracy)])
+                else:
+                    progbar.update(current, [('loss', loss), ('acc.', accuracy)])
 
             progbar.update(current, [('loss', total_loss/current), ('acc.', total_accuracy/current)])
             model.save_weights(save_weights_file, overwrite = True)
@@ -215,8 +232,9 @@ def save_predictions(predictions, filename):
 
 def main():
 
-    mode = 'pred'
-    folds = 2
+    mode = 'test'
+    folds = 5
+    subset = .2
 
     load_weights = False
     load_weights_file = 'weights/pp_3_12.hdf5'
@@ -226,8 +244,8 @@ def main():
     test_file = 'data/test.csv'
     out_file = 'solutions/answers_warp.csv'
 
-    nb_epoch = 1
-    batch_size = 384
+    nb_epoch = 8
+    batch_size = 256
     nb_classes = 10
 
     X = None
@@ -236,7 +254,7 @@ def main():
 
     if not load_weights:
         print('loading data...')
-        X, y, datagen = load_data(train_file, nb_classes)
+        X, y, datagen = load_data(train_file, nb_classes, subset = subset)
 
     print('building model...')
     model = build_keras(nb_classes)
