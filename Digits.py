@@ -21,21 +21,32 @@ from keras.layers.advanced_activations import PReLU
 from keras.callbacks import ModelCheckpoint
 
 
-def load_data(filename):
-    """ returns X and y - data and target - as numpy arrays """
+def load_data(filename, nb_classes):
+    """ returns X and y - data and target - as numpy arrays, X normalized
+    and y made categorical. """
+
     data = np.genfromtxt(filename, delimiter=',', skip_header=1, dtype='float32')
-    return [data[0::,1::], data[0::,0]]
 
-def preprocess_data(X, y, nb_classes):
-    """ returns X and y as shaped for keras and normalized to [0,1]
-        plus any fancy image preprocessing selected. """
-
+    X = data[0::,1::]
     X = X.reshape(X.shape[0], 1, 28, 28)
     X /= 255
 
+    y = data[0::,0]]
     y = np_utils.to_categorical(y, nb_classes)
 
-    return [X, y]
+    datagen = ImageDataGenerator(featurewise_center=False,
+                                        samplewise_center=False,
+                                        featurewise_std_normalization=False,
+                                        samplewise_std_normalization=False,
+                                        zca_whitening=False,
+                                        rotation_range=5,
+                                        width_shift_range=0.11,
+                                        height_shift_range=0.11,
+                                        horizontal_flip=False,
+                                        vertical_flip=False)
+    datagen.fit(X_train)
+
+    return [X, y, datagen]
 
 def build_keras(nb_classes):
 
@@ -62,7 +73,7 @@ def build_keras(nb_classes):
     model.compile(loss='categorical_crossentropy', optimizer='adadelta')
     return model
 
-def cross_validate(model, X, y, folds, nb_epoch, batch_size):
+def cross_validate(model, X, y, folds, nb_epoch, batch_size, datagen):
 
     # TODO cross validate with batch updates
 
@@ -88,49 +99,21 @@ def cross_validate(model, X, y, folds, nb_epoch, batch_size):
     print("Accuracy: " + str(scores.mean()) + " (+/- " + str(scores.std()/2) + ")")
     return scores
 
-def get_predictions(filename, X, y, model, nb_epoch, batch_size, save_weights_file, load_weights_file, load_weights):
+def get_predictions(filename, X, y, model, nb_epoch, batch_size, save_weights_file, load_weights_file, load_weights, datagen):
     """ returns a numpy array with predictions for the test file """
 
     if load_weights:
         model.load_weights(load_weights_file)
     else:
-        # checkpointer = ModelCheckpoint(filepath=save_weights_file, verbose=1, save_best_only=True)
-
-
-        datagen = ImageDataGenerator(featurewise_center=False,
-                                        samplewise_center=False,
-                                        featurewise_std_normalization=False,
-                                        samplewise_std_normalization=False,
-                                        zca_whitening=False,
-                                        rotation_range=5,
-                                        width_shift_range=0.11,
-                                        height_shift_range=0.11,
-                                        horizontal_flip=False,
-                                        vertical_flip=False)
-        datagen.fit(X)
-
-        # flow = datagen.flow(X, y, batch_size = len(y))
-
-        # Xt, yt = flow.next()
-
-        # X = np.append(X, Xt, axis = 0)
-        # y = np.append(y, yt, axis = 0)
-
         for e in range(nb_epoch):
             print('Epoch: ', e)
+
             # batch train with realtime data augmentation
             accuracy = 0
             for X_batch, Y_batch in datagen.flow(X, y, batch_size):
                 loss, accuracy = model.train(X_batch, Y_batch, accuracy = True)
-            print('Accuracy: ', accuracy)
-            model.save_weights(save_weights_file, overwrite = True)
 
-        # model.fit(X,y,
-        #           batch_size=batch_size, 
-        #           nb_epoch=nb_epoch, 
-        #           show_accuracy=True, 
-        #           verbose=1, 
-        #           callbacks=[checkpointer])
+            model.save_weights(save_weights_file, overwrite = True)
 
     test_data = np.genfromtxt(filename, delimiter=',', skip_header=1, dtype='float32')
     test_data = test_data.reshape(test_data.shape[0], 1, 28, 28)
@@ -151,37 +134,36 @@ def main():
     mode = 'pred'
     load_weights = False
     load_weights_file = 'weights/pp_3_12.hdf5'
-    save_weights_file = 'tmp/checkpoint_weights_big.hdf5'
+    save_weights_file = 'tmp/checkpoint_weights.hdf5'
     train_file = 'data/train.csv'
     test_file = 'data/test.csv'
-    out_file = 'solutions/answers_pp_big.csv'
-    nb_epoch = 600
+    out_file = 'solutions/answers_pp_12.csv'
+    nb_epoch = 12
     folds = 5
     batch_size = 128
     nb_classes = 10
 
     X = None
     y = None
+    datagen = None
 
     if not load_weights:
         print('loading data...')
-        X, y = load_data(train_file)
-
-        print('preprocessing data...')
-        X, y = preprocess_data(X, y, nb_classes)
+        X, y, datagen = load_data(train_file, nb_classes)
 
     print('building model...')
     model = build_keras(nb_classes)
     
     if mode == 'test' or mode == 'both':
         print('evaluating model...')
-        cross_validate(model, X = X, y = y, folds = folds, nb_epoch = nb_epoch, batch_size = batch_size)
+        cross_validate(model, X = X, y = y, folds = folds, nb_epoch = nb_epoch, batch_size = batch_size, datagen = datagen)
     if mode == 'pred' or mode == 'both':
         print('obtaining predictions...')
         save_predictions(get_predictions(test_file, X = X, y = y, 
                                             model = model, nb_epoch = nb_epoch, 
                                             batch_size = batch_size, save_weights_file = save_weights_file,
-                                            load_weights_file = load_weights_file, load_weights = load_weights), out_file)
+                                            load_weights_file = load_weights_file, load_weights = load_weights,
+                                            datagen = datagen), out_file)
 
 if __name__ == '__main__':
     main()
