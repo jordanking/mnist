@@ -63,10 +63,7 @@ def load_data(filename, nb_classes, subset = 1):
 
     return [X, y, datagen]
 
-#### from https://github.com/FlorianMuellerklein/lasagne_mnist/blob/master/helpers.py
-
-# def fast_warp(img, tf, output_shape, mode='nearest'):
-#     return transform._warps_cy._warp_fast(img, tf.params, output_shape=output_shape, mode=mode)
+#### adapted from https://github.com/FlorianMuellerklein/lasagne_mnist/blob/master/helpers.py
 
 def batch_warp(X_batch, y_batch):
     '''
@@ -125,7 +122,7 @@ def batch_warp(X_batch, y_batch):
 
     return [X_batch_aug, y_batch]
 
-#### end https://github.com/FlorianMuellerklein/lasagne_mnist/blob/master/helpers.py
+#### end adaption from https://github.com/FlorianMuellerklein/lasagne_mnist/blob/master/helpers.py
 
 def build_keras(nb_classes):
 
@@ -139,16 +136,7 @@ def build_keras(nb_classes):
 
     model.add(MaxPooling2D(poolsize=(2, 2)))
     model.add(Dropout(0.25))
-#
-    # model.add(Convolution2D(32, 1, 3, 3, border_mode='full')) 
-    # model.add(Activation('relu'))
 
-    # model.add(Convolution2D(32, 32, 3, 3))
-    # model.add(Activation('relu'))
-
-    # model.add(MaxPooling2D(poolsize=(2, 2)))
-    # model.add(Dropout(0.25))
-#
     model.add(Flatten())
 
     model.add(Dense(32*196, 128))
@@ -161,7 +149,33 @@ def build_keras(nb_classes):
     model.compile(loss='categorical_crossentropy', optimizer='adadelta')
     return model
 
-def cross_validate(model, X, y, folds, nb_epoch, batch_size, datagen):
+def fit_model(model, X, y, nb_epoch, batch_size, save_weights_file, datagen):
+
+    for e in range(nb_epoch):
+        print('Epoch: ', e)
+        progbar = Progbar(target=X.shape[0], verbose=True)
+
+        # batch train with realtime data augmentation
+        total_accuracy = 0
+        total_loss = 0
+        current = 0
+        for X_batch, y_batch in datagen.flow(X, y, batch_size):
+            # X_batch, y_batch = batch_warp(X_batch, y_batch)
+            loss, accuracy = model.train(X_batch, y_batch, accuracy = True)
+
+            total_loss += loss * batch_size
+            total_accuracy += accuracy * batch_size
+
+            current += batch_size
+            if current > X.shape[0]:
+                current = X.shape[0]
+            else:
+                progbar.update(current, [('loss', loss), ('acc.', accuracy)])
+        progbar.update(current, [('loss', total_loss/current), ('acc.', total_accuracy/current)])
+        model.save_weights(save_weights_file, overwrite = True)
+    return model
+
+def cross_validate(model, X, y, folds, nb_epoch, batch_size, save_weights_file, datagen):
 
     kf = KFold(X.shape[0], folds)
     scores = []
@@ -169,13 +183,7 @@ def cross_validate(model, X, y, folds, nb_epoch, batch_size, datagen):
     for train, test in kf:
         X_train, X_test, y_train, y_test = X[train], X[test], y[train], y[test]
 
-        for e in range(nb_epoch):
-            print('Epoch: ', e)
-
-            # batch train with realtime data augmentation
-            for X_batch, y_batch in datagen.flow(X, y, batch_size):
-                X_batch, y_batch = batch_warp(X_batch, y_batch)
-                loss, accuracy = model.train(X_batch, y_batch, accuracy = True)
+        model = fit_model(model, X_train, y_train, nb_epoch, batch_size, save_weights_file, datagen)
         
         loss, score = model.evaluate(X_test, y_test, show_accuracy=True, verbose=0)
         print ('Loss: ' + str(loss))
@@ -191,30 +199,7 @@ def get_predictions(filename, X, y, model, nb_epoch, batch_size, save_weights_fi
     if load_weights:
         model.load_weights(load_weights_file)
     else:
-        for e in range(nb_epoch):
-            print('Epoch: ', e)
-            progbar = Progbar(target=X.shape[0], verbose=True)
-
-            # batch train with realtime data augmentation
-            total_accuracy = 0
-            total_loss = 0
-            current = 0
-            for X_batch, y_batch in datagen.flow(X, y, batch_size):
-
-                # X_batch, y_batch = batch_warp(X_batch, y_batch)
-                loss, accuracy = model.train(X_batch, y_batch, accuracy = True)
-
-                total_loss += loss * batch_size
-                total_accuracy += accuracy * batch_size
-
-                current += batch_size
-                if current > X.shape[0]:
-                    current = X.shape[0]
-                else:
-                    progbar.update(current, [('loss', loss), ('acc.', accuracy)])
-
-            progbar.update(current, [('loss', total_loss/current), ('acc.', total_accuracy/current)])
-            model.save_weights(save_weights_file, overwrite = True)
+        fit_model(model, X_train, y_train, nb_epoch, batch_size, save_weights_file, datagen)
 
     test_data = np.genfromtxt(filename, delimiter=',', skip_header=1, dtype='float32')
     test_data = test_data.reshape(test_data.shape[0], 1, 28, 28)
@@ -261,7 +246,8 @@ def main():
     
     if mode == 'test' or mode == 'both':
         print('evaluating model...')
-        cross_validate(model, X = X, y = y, folds = folds, nb_epoch = nb_epoch, batch_size = batch_size, datagen = datagen)
+        cross_validate(model, X = X, y = y, folds = folds, nb_epoch = nb_epoch, batch_size = batch_size, 
+                                            save_weights_file = save_weights_file, datagen = datagen)
 
     if mode == 'pred' or mode == 'both':
         print('obtaining predictions...')
