@@ -160,7 +160,7 @@ def fit_model(model, X, y, nb_epoch, batch_size, save_weights_file, datagen):
         total_loss = 0
         current = 0
         for X_batch, y_batch in datagen.flow(X, y, batch_size):
-            #X_batch, y_batch = batch_warp(X_batch, y_batch)
+            # X_batch, y_batch = batch_warp(X_batch, y_batch)
             loss, accuracy = model.train(X_batch, y_batch, accuracy = True)
 
             total_loss += loss * batch_size
@@ -201,7 +201,7 @@ def get_predictions(filename, X, y, model, nb_epoch, batch_size, save_weights_fi
     if load_weights:
         model.load_weights(load_weights_file)
     else:
-        fit_model(model, X_train, y_train, nb_epoch, batch_size, save_weights_file, datagen)
+        model = fit_model(model, X, y, nb_epoch, batch_size, save_weights_file, datagen)
 
     test_data = np.genfromtxt(filename, delimiter=',', skip_header=1, dtype='float32')
     test_data = test_data.reshape(test_data.shape[0], 1, 28, 28)
@@ -221,7 +221,7 @@ def save_predictions(predictions, filename):
 
 def main():
 
-    mode = 'test'
+    mode = 'pred'
     folds = 5
     subset = 1
 
@@ -233,7 +233,7 @@ def main():
     test_file = 'data/test.csv'
     out_file = 'solutions/answers_warp.csv'
 
-    nb_epoch = 8
+    nb_epoch = 1
     batch_size = 384
     nb_classes = 10
 
