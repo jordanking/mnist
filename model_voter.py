@@ -32,10 +32,12 @@ def tally_votes(model_files, out_file):
             disputes += 1
         model[i] = modes[0]
 
-    print('resolved ', disputes, ' disputes...')
+    print('Resolved ', disputes, ' disputes...')
     print('Number of predictions changed per model:')
     for f in range(0, len(model_files)):
         print(model_files[f] + ': ' + str(np.sum(model != votes[:, f])))
+
+    model = model.astype('int')
 
     # save the new model
     predictions_file = open(out_file, "wb")
@@ -47,10 +49,10 @@ def tally_votes(model_files, out_file):
 
 def main():
 
-    out_file = 'solutions/answers_vote_pps.csv'
-    model_files = ['solutions/answers_pp_12.csv', 'solutions/answers_pp_big.csv']
+    out_file = 'solutions/answers_vote.csv'
+    model_files = ['solutions/answers_pp_600.csv', 'solutions/answers_warp_1_45.csv', 'solutions/answers_warp_2_45.csv']
 
-    model = tally_votes(votes, out_file)
+    model = tally_votes(model_files, out_file)
 
 if __name__ == '__main__':
     main()

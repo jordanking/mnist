@@ -148,11 +148,15 @@ def build_keras(nb_classes):
 
     model.add(Flatten())
 
-    model.add(Dense(32*196/2, 128))
+    model.add(Dense(32*196/2, 256))
     model.add(Activation('relu'))
     model.add(Dropout(0.5))
 
-    model.add(Dense(128, nb_classes))
+    model.add(Dense(256, 256))
+    model.add(Activation('relu'))
+    model.add(Dropout(0.5))
+
+    model.add(Dense(256, nb_classes))
     model.add(Activation('softmax'))
 
     model.compile(loss='categorical_crossentropy', optimizer='adadelta')
@@ -240,9 +244,9 @@ def main():
     save_weights_file = 'tmp/checkpoint_weights.hdf5'
     train_file = 'data/train.csv'
     test_file = 'data/test.csv'
-    out_file = 'solutions/answers_warp.csv'
+    out_file = 'solutions/answers_warp_2_500.csv'
 
-    nb_epoch = 45
+    nb_epoch = 500
     batch_size = 384
     nb_classes = 10
 
