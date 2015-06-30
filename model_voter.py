@@ -68,7 +68,7 @@ def main():
 
     out_file = 'solutions/answers_vote_demo.csv'
     data_file = 'data/test.csv'
-    model_files = ['solutions/answers_pp_600.csv', 'solutions/answers_warp_1_45.csv', 'solutions/answers_warp_2_45.csv']
+    model_files = ['solutions/answers_warp_2_100.csv', 'solutions/answers_warp_2_500.csv', 'solutions/answers_warp_4_100.csv']
 
     model = tally_votes(model_files, data_file, out_file)
 
