@@ -244,10 +244,10 @@ def main():
     save_weights_file = 'tmp/checkpoint_weights.hdf5'
     train_file = 'data/train.csv'
     test_file = 'data/test.csv'
-    out_file = 'solutions/answers_warp_2_500.csv'
+    out_file = 'solutions/answers_warp_2_10.csv'
 
-    nb_epoch = 500
-    batch_size = 384
+    nb_epoch = 100
+    batch_size = 128
     nb_classes = 10
 
     X = None
