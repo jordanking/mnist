@@ -128,16 +128,7 @@ def build_keras(nb_classes):
 
     model = Sequential()
 
-    model.add(Convolution2D(32, 1, 3, 3, border_mode='full')) 
-    model.add(Activation('relu'))
-
-    model.add(Convolution2D(32, 32, 3, 3))
-    model.add(Activation('relu'))
-
-    model.add(MaxPooling2D(poolsize=(2, 2)))
-    model.add(Dropout(0.25))
-
-    model.add(Convolution2D(64, 32, 3, 3, border_mode='full')) 
+    model.add(Convolution2D(64, 1, 3, 3, border_mode='full')) 
     model.add(Activation('relu'))
 
     model.add(Convolution2D(64, 64, 3, 3))
@@ -146,17 +137,26 @@ def build_keras(nb_classes):
     model.add(MaxPooling2D(poolsize=(2, 2)))
     model.add(Dropout(0.25))
 
+    model.add(Convolution2D(128, 64, 3, 3, border_mode='full')) 
+    model.add(Activation('relu'))
+
+    model.add(Convolution2D(128, 128, 3, 3))
+    model.add(Activation('relu'))
+
+    model.add(MaxPooling2D(poolsize=(2, 2)))
+    model.add(Dropout(0.25))
+
     model.add(Flatten())
 
-    model.add(Dense(32*196/2, 256))
+    model.add(Dense(32*196, 512))
     model.add(Activation('relu'))
     model.add(Dropout(0.5))
 
-    model.add(Dense(256, 256))
+    model.add(Dense(512, 512))
     model.add(Activation('relu'))
     model.add(Dropout(0.5))
 
-    model.add(Dense(256, nb_classes))
+    model.add(Dense(512, nb_classes))
     model.add(Activation('softmax'))
 
     model.compile(loss='categorical_crossentropy', optimizer='adadelta')
@@ -244,7 +244,7 @@ def main():
     save_weights_file = 'tmp/checkpoint_weights.hdf5'
     train_file = 'data/train.csv'
     test_file = 'data/test.csv'
-    out_file = 'solutions/answers_warp_2_10.csv'
+    out_file = 'solutions/answers_warp_4_100.csv'
 
     nb_epoch = 100
     batch_size = 128
