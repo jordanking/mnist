@@ -9,6 +9,8 @@ from __future__ import print_function
 import numpy as np
 import pandas as pd
 import csv as csv
+import pickle
+import os.path
 
 from sklearn.cross_validation import KFold
 from sklearn.cross_validation import train_test_split
@@ -37,328 +39,333 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 from matplotlib import interactive
 
-def load_data(filename, nb_classes, subset = 1):
-    """ 
-    returns X and y - data and target - as numpy arrays, X normalized
-    and y made categorical.
-    :param filename: path to the data
-    """
+class Predictor:
+    def __init__(self):
+        self.mode = 'pred' # pred generates submission; test does cross-val; both is both
+        self.folds = 5
+        self.subset = 1 # percent of train file to utilize
 
-    data = np.genfromtxt(filename, delimiter=',', skip_header=1, dtype='float32')
+        self.load_weights = False
+        self.load_weights_file = 'tmp/checkpoint_weights.hdf5'
+        self.save_weights_file = 'tmp/checkpoint_weights.hdf5'
 
-    if subset != 1:
-        np.random.shuffle(data)
-        data = data[0:int(subset*data.shape[0]):, ::]
+        self.train_file = 'data/train.csv'
+        self.test_file = 'data/test.csv'
+        self.out_file = 'solutions/answers_el_1_45.csv'
 
-    X = data[0::,1::]
-    X = X.reshape(X.shape[0], 1, 28, 28)
-    X /= 255
+        self.nb_epoch = 45
+        self.batch_size = 128
+        self.nb_classes = 10
 
-    y = data[0::,0]
-    y = np_utils.to_categorical(y, nb_classes)
+        self.X = None
+        self.y = None
+        self.datagen = None
+        self.model = None
 
-    
+    def load_data(self):
+        """ 
+        returns X and y - data and target - as numpy arrays, X normalized
+        and y made categorical.
+        """
 
-    datagen = ImageDataGenerator(featurewise_center=False,
-                                        samplewise_center=False,
-                                        featurewise_std_normalization=False,
-                                        samplewise_std_normalization=False,
-                                        zca_whitening=False,
-                                        rotation_range=0,
-                                        width_shift_range=0.,
-                                        height_shift_range=0.,
-                                        horizontal_flip=False,
-                                        vertical_flip=False)
-    datagen.fit(X)
+        if (os.path.exists('data/train.pickle')):
+            with open('data/train.pickle', 'rb') as f:
+                data = pickle.load(f)
+        else:
+            data = np.genfromtxt(self.train_file, delimiter=',', skip_header=1, dtype='float32')
+            with open('data/train.pickle', 'wb') as f:
+                pickle.dump(data, f)
 
-    return [X, y, datagen]
+        if self.subset != 1:
+            np.random.shuffle(data)
+            data = data[0:int(self.subset*data.shape[0]):, ::]
 
+        X = data[0::,1::]
+        X = X.reshape(X.shape[0], 1, 28, 28)
+        X /= 255
 
-def image_warp(image, displacement_field_x, displacement_field_y):
-    """
-    expensive warping of an image given displacement field.
-    """
-    result = np.zeros(image.shape)
+        y = data[0::,0]
+        y = np_utils.to_categorical(y, self.nb_classes)
 
-    for row in xrange(image.shape[1]):
-        for col in xrange(image.shape[0]):
-            low_ii = row + int(math.floor(displacement_field_x[row, col]))
-            high_ii = row + int(math.ceil(displacement_field_x[row, col]))
-
-            low_jj = col + int(math.floor(displacement_field_y[row, col]))
-            high_jj = col + int(math.ceil(displacement_field_y[row, col]))
-
-            if low_ii < 0 or low_jj < 0 or high_ii >= image.shape[1] -1 \
-               or high_jj >= image.shape[0] - 1:
-                continue
-
-            res = image[low_ii, low_jj]/4 + image[low_ii, high_jj]/4 + \
-                    image[high_ii, low_jj]/4 + image[high_ii, high_jj]/4
-
-            result[row, col] = res
-    return result
-
-#### adapted from https://github.com/FlorianMuellerklein/lasagne_mnist/blob/master/helpers.py
-
-def batch_warp(X_batch, y_batch):
-    """
-    Data augmentation for feeding images into CNN.
-    This example will randomly rotate all images in a given batch between -10 and 10 degrees
-    and to random translations between -5 and 5 pixels in all directions.
-    Random zooms between 1 and 1.3.
-    Random shearing between -20 and 20 degrees.
-    Randomly applies sobel edge detector to 1/4th of the images in each batch.
-    Randomly inverts 1/2 of the images in each batch.
-    """
-    PIXELS = 28
-
-    # set empty copy to hold augmented images so that we don't overwrite
-    X_batch_aug = np.empty(shape = (X_batch.shape[0], 1, PIXELS, PIXELS), dtype = 'float32')
-
-    # random rotations betweein -8 and 8 degrees
-    dorotate = randint(-5,5)
-
-    # random translations
-    trans_1 = randint(-3,3)
-    trans_2 = randint(-3,3)
-
-    # random zooms
-    zoom = uniform(0.8, 1.2)
-
-    # shearing
-    shear_deg = uniform(-10, 10)
-
-    # set the transform parameters for skimage.transform.warp
-    # have to shift to center and then shift back after transformation otherwise
-    # rotations will make image go out of frame
-    center_shift   = np.array((PIXELS, PIXELS)) / 2. - 0.5
-    tform_center   = transform.SimilarityTransform(translation=-center_shift)
-    tform_uncenter = transform.SimilarityTransform(translation=center_shift)
-
-    tform_aug = transform.AffineTransform(rotation = np.deg2rad(dorotate),
-                                          scale =(1/zoom, 1/zoom),
-                                          shear = np.deg2rad(shear_deg),
-                                          translation = (trans_1, trans_2))
-
-    tform = tform_center + tform_aug + tform_uncenter
-
-    # random distortions
-    sigma = 4
-    alpha = 34
-
-    d_x = np.random.uniform(low = -1, high = 1, size = (28,28))
-    d_y = np.random.uniform(low = -1, high = 1, size = (28,28))
-
-    d_x = gaussian_filter(d_x, sigma) * alpha
-    d_y = gaussian_filter(d_y, sigma) * alpha
-
-    # elastic_distortion_field = np.empty((2, 28, 28))
-    # for r in range(28):
-    #     for c in range(28):
-    #         elastic_distortion_field[0,r,c] = d_x[r,c]
-    #         elastic_distortion_field[1,r,c] = d_y[r,c]
-
-    # images in the batch do the augmentation
-    # interactive(True)
-
-    for j in range(X_batch.shape[0]):
-
-        # if j == 0:
-        #     plt.imshow(X_batch[j][0], cmap='Greys')
-        #     raw_input('press return to continue or q to end...')
-
-        # X_batch_aug[j][0] = transform._warps_cy._warp_fast(X_batch[j][0], elastic_distortion_field, (PIXELS, PIXELS))
-        X_batch_aug[j][0] = image_warp(X_batch[j][0], d_x, d_y)
-
-        X_batch_aug[j][0] = transform._warps_cy._warp_fast(X_batch[j][0], tform.params, (PIXELS, PIXELS))
         
-        # if j == 0:
-        #     plt.imshow(X_batch_aug[j][0], cmap='Greys')
-        #     raw_input('press return to continue or q to end...')
 
-    # use sobel edge detector filter on one quarter of the images
-    indices_sobel = np.random.choice(X_batch_aug.shape[0], X_batch_aug.shape[0] / 4, replace = False)
-    for k in indices_sobel:
-        img = X_batch_aug[k][0]
-        X_batch_aug[k][0] = filters.sobel(img)
+        self.datagen = ImageDataGenerator(featurewise_center=False,
+                                            samplewise_center=False,
+                                            featurewise_std_normalization=False,
+                                            samplewise_std_normalization=False,
+                                            zca_whitening=False,
+                                            rotation_range=0,
+                                            width_shift_range=0.,
+                                            height_shift_range=0.,
+                                            horizontal_flip=False,
+                                            vertical_flip=False)
+        self.datagen.fit(X)
 
-    return [X_batch_aug, y_batch]
+        self.X = X
+        self.y = y
 
-#### end adaption from https://github.com/FlorianMuellerklein/lasagne_mnist/blob/master/helpers.py
+    def image_warp(self, image, displacement_field_x, displacement_field_y):
+        """
+        expensive warping of an image given displacement field.
+        """
+        result = np.zeros(image.shape)
 
-def build_keras(nb_classes):
-    """
-    constructs the neural network model
-    """
+        for row in xrange(image.shape[1]):
+            for col in xrange(image.shape[0]):
+                low_ii = row + int(math.floor(displacement_field_x[row, col]))
+                high_ii = row + int(math.ceil(displacement_field_x[row, col]))
 
-    model = Sequential()
+                low_jj = col + int(math.floor(displacement_field_y[row, col]))
+                high_jj = col + int(math.ceil(displacement_field_y[row, col]))
 
-    model.add(Convolution2D(64, 1, 3, 3, border_mode='full')) 
-    model.add(Activation('relu'))
+                if low_ii < 0 or low_jj < 0 or high_ii >= image.shape[1] -1 \
+                   or high_jj >= image.shape[0] - 1:
+                    continue
 
-    model.add(Convolution2D(64, 64, 3, 3))
-    model.add(Activation('relu'))
+                res = image[low_ii, low_jj]/4 + image[low_ii, high_jj]/4 + \
+                        image[high_ii, low_jj]/4 + image[high_ii, high_jj]/4
 
-    model.add(MaxPooling2D(poolsize=(2, 2)))
-    model.add(Dropout(0.25))
+                result[row, col] = res
+        return result
 
-    model.add(Convolution2D(128, 64, 3, 3, border_mode='full')) 
-    model.add(Activation('relu'))
+    #### adapted from https://github.com/FlorianMuellerklein/lasagne_mnist/blob/master/helpers.py
 
-    model.add(Convolution2D(128, 128, 3, 3))
-    model.add(Activation('relu'))
+    def batch_warp(self, X_batch, y_batch):
+        """
+        Data augmentation for feeding images into CNN.
+        This example will randomly rotate all images in a given batch between -10 and 10 degrees
+        and to random translations between -5 and 5 pixels in all directions.
+        Random zooms between 1 and 1.3.
+        Random shearing between -20 and 20 degrees.
+        Randomly applies sobel edge detector to 1/4th of the images in each batch.
+        Randomly inverts 1/2 of the images in each batch.
+        """
+        PIXELS = 28
 
-    model.add(MaxPooling2D(poolsize=(2, 2)))
-    model.add(Dropout(0.25))
+        # set empty copy to hold augmented images so that we don't overwrite
+        X_batch_aug = np.empty(shape = (X_batch.shape[0], 1, PIXELS, PIXELS), dtype = 'float32')
 
-    model.add(Flatten())
+        # random rotations betweein -8 and 8 degrees
+        dorotate = randint(-5,5)
 
-    model.add(Dense(32*196, 512))
-    model.add(Activation('relu'))
-    model.add(Dropout(0.5))
+        # random translations
+        trans_1 = randint(-3,3)
+        trans_2 = randint(-3,3)
 
-    model.add(Dense(512, 512))
-    model.add(Activation('relu'))
-    model.add(Dropout(0.5))
+        # random zooms
+        zoom = uniform(0.8, 1.2)
 
-    model.add(Dense(512, nb_classes))
-    model.add(Activation('softmax'))
+        # shearing
+        shear_deg = uniform(-10, 10)
 
-    model.compile(loss='categorical_crossentropy', optimizer='adadelta')
-    return model
+        # set the transform parameters for skimage.transform.warp
+        # have to shift to center and then shift back after transformation otherwise
+        # rotations will make image go out of frame
+        center_shift   = np.array((PIXELS, PIXELS)) / 2. - 0.5
+        tform_center   = transform.SimilarityTransform(translation=-center_shift)
+        tform_uncenter = transform.SimilarityTransform(translation=center_shift)
 
-def fit_model(model, X, y, nb_epoch, batch_size, save_weights_file, datagen):
-    """
-    fits a model to some data
-    """
+        tform_aug = transform.AffineTransform(rotation = np.deg2rad(dorotate),
+                                              scale =(1/zoom, 1/zoom),
+                                              shear = np.deg2rad(shear_deg),
+                                              translation = (trans_1, trans_2))
 
-    for e in range(nb_epoch):
-        print('Epoch: ', e)
-        progbar = Progbar(target=X.shape[0], verbose=True)
+        tform = tform_center + tform_aug + tform_uncenter
 
-        # batch train with realtime data augmentation
-        total_accuracy = 0
-        total_loss = 0
-        current = 0
-        for X_batch, y_batch in datagen.flow(X, y, batch_size):
+        # random distortions
+        sigma = 4
+        alpha = 34
 
-            # prepare the batch with random augmentations
-            X_batch, y_batch = batch_warp(X_batch, y_batch)
+        d_x = np.random.uniform(low = -1, high = 1, size = (28,28))
+        d_y = np.random.uniform(low = -1, high = 1, size = (28,28))
 
-            # train on the batch
-            loss, accuracy = model.train(X_batch, y_batch, accuracy = True)
+        d_x = gaussian_filter(d_x, sigma) * alpha
+        d_y = gaussian_filter(d_y, sigma) * alpha
+
+        # elastic_distortion_field = np.empty((2, 28, 28))
+        # for r in range(28):
+        #     for c in range(28):
+        #         elastic_distortion_field[0,r,c] = d_x[r,c]
+        #         elastic_distortion_field[1,r,c] = d_y[r,c]
+
+        # images in the batch do the augmentation
+        # interactive(True)
+
+        for j in range(X_batch.shape[0]):
+
+            # if j == 0:
+            #     plt.imshow(X_batch[j][0], cmap='Greys')
+            #     raw_input('press return to continue or q to end...')
+
+            # X_batch_aug[j][0] = transform._warps_cy._warp_fast(X_batch[j][0], elastic_distortion_field, (PIXELS, PIXELS))
+            X_batch_aug[j][0] = self.image_warp(X_batch[j][0], d_x, d_y)
+
+            X_batch_aug[j][0] = transform._warps_cy._warp_fast(X_batch[j][0], tform.params, (PIXELS, PIXELS))
             
-            # update the progress bar
-            total_loss += loss * batch_size
-            total_accuracy += accuracy * batch_size
-            current += batch_size
-            if current > X.shape[0]:
-                current = X.shape[0]
-            else:
-                progbar.update(current, [('loss', loss), ('acc.', accuracy)])
-        progbar.update(current, [('loss', total_loss/current), ('acc.', total_accuracy/current)])
+            # if j == 0:
+            #     plt.imshow(X_batch_aug[j][0], cmap='Greys')
+            #     raw_input('press return to continue or q to end...')
+
+        # use sobel edge detector filter on one quarter of the images
+        indices_sobel = np.random.choice(X_batch_aug.shape[0], X_batch_aug.shape[0] / 4, replace = False)
+        for k in indices_sobel:
+            img = X_batch_aug[k][0]
+            X_batch_aug[k][0] = filters.sobel(img)
+
+        return [X_batch_aug, y_batch]
+
+    #### end adaption from https://github.com/FlorianMuellerklein/lasagne_mnist/blob/master/helpers.py
+
+
+    def build_keras(self):
+        """
+        constructs the neural network model
+        """
+
+        model = Sequential()
+
+        model.add(Convolution2D(64, 1, 3, 3, border_mode='full')) 
+        model.add(Activation('relu'))
+
+        model.add(Convolution2D(64, 64, 3, 3))
+        model.add(Activation('relu'))
+
+        model.add(MaxPooling2D(poolsize=(2, 2)))
+        model.add(Dropout(0.25))
+
+        model.add(Convolution2D(128, 64, 3, 3, border_mode='full')) 
+        model.add(Activation('relu'))
+
+        model.add(Convolution2D(128, 128, 3, 3))
+        model.add(Activation('relu'))
+
+        model.add(MaxPooling2D(poolsize=(2, 2)))
+        model.add(Dropout(0.25))
+
+        model.add(Flatten())
+
+        model.add(Dense(32*196, 512))
+        model.add(Activation('relu'))
+        model.add(Dropout(0.5))
+
+        model.add(Dense(512, 512))
+        model.add(Activation('relu'))
+        model.add(Dropout(0.5))
+
+        model.add(Dense(512, self.nb_classes))
+        model.add(Activation('softmax'))
+
+        model.compile(loss='categorical_crossentropy', optimizer='adadelta')
+        self.model = model
+
+    def fit_model(self, X, y):
+        """
+        fits a model to some data
+        """
+
+        for e in range(self.nb_epoch):
+            print('Epoch: ', e)
+            progbar = Progbar(target=X.shape[0], verbose=True)
+
+            # batch train with realtime data augmentation
+            total_accuracy = 0
+            total_loss = 0
+            current = 0
+            for X_batch, y_batch in self.datagen.flow(X, y, self.batch_size):
+
+                # prepare the batch with random augmentations
+                X_batch, y_batch = self.batch_warp(X_batch, y_batch)
+
+                # train on the batch
+                loss, accuracy = self.model.train(X_batch, y_batch, accuracy = True)
+                
+                # update the progress bar
+                total_loss += loss * self.batch_size
+                total_accuracy += accuracy * self.batch_size
+                current += self.batch_size
+                if current > self.X.shape[0]:
+                    current = self.X.shape[0]
+                else:
+                    progbar.update(current, [('loss', loss), ('acc.', accuracy)])
+            progbar.update(current, [('loss', total_loss/current), ('acc.', total_accuracy/current)])
+            
+            # checkpoints between epochs
+            self.model.save_weights(self.save_weights_file, overwrite = True)
+
+    def cross_validate(self):
+        """
+        provides a simple cross validation measurement. It doen't make a new
+        model for each fold though, so it isn't actually cross validation... the
+        model just gets better with time for now. This is pretty expensive to run.
+        """
+
+        kf = KFold(self.X.shape[0], self.folds)
+        scores = []
+
+        for train, test in kf:
+            X_train, X_test, y_train, y_test = self.X[train], self.X[test], self.y[train], self.y[test]
+
+            self.model = self.fit_model(X_train, y_train)
+            
+            loss, score = self.model.evaluate(X_test, y_test, show_accuracy=True, verbose=0)
+            print ('Loss: ' + str(loss))
+            print ('Score: ' + str(score))
+            scores.append(score)
         
-        # checkpoints between epochs
-        model.save_weights(save_weights_file, overwrite = True)
-    
-    return model
+        scores = np.array(scores)
+        print("Accuracy: " + str(scores.mean()) + " (+/- " + str(scores.std()/2) + ")")
 
-def cross_validate(model, X, y, folds, nb_epoch, batch_size, save_weights_file, datagen):
-    """
-    provides a simple cross validation measurement. It doen't make a new
-    model for each fold though, so it isn't actually cross validation... the
-    model just gets better with time for now. This is pretty expensive to run.
-    """
+    def get_predictions(self):
+        """
+        trains and predicts on the mnist data
+        """
 
-    kf = KFold(X.shape[0], folds)
-    scores = []
+        if self.load_weights:
+            self.model.load_weights(self.load_weights_file)
+        else:
+            self.model = self.fit_model(self.X, self.y)
 
-    for train, test in kf:
-        X_train, X_test, y_train, y_test = X[train], X[test], y[train], y[test]
+        test_data = np.genfromtxt(self.test_file, delimiter=',', skip_header=1, dtype='float32')
+        test_data = test_data.reshape(test_data.shape[0], 1, 28, 28)
+        test_data /= 255
 
-        model = fit_model(model, X_train, y_train, nb_epoch, batch_size, save_weights_file, datagen)
+        return self.model.predict_classes(test_data, batch_size = self.batch_size)
+
+    def save_predictions(self, predictions):
+        """
+        saves the predictions to file in a format that kaggle likes.
+        """
+
+        predictions_file = open(self.out_file, "wb")
+        open_file_object = csv.writer(predictions_file, quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
+        open_file_object.writerow(['ImageId','Label'])
+        for i in range(0,predictions.shape[0]):
+            open_file_object.writerow([i+1, predictions[i]])
+        predictions_file.close()
+
+    def run_basic(self):
+        """
+        set up the test here!
+        """
+
+        if not self.load_weights:
+            print('loading data...')
+            self.load_data()
+
+        print('building model...')
+        self.build_keras()
         
-        loss, score = model.evaluate(X_test, y_test, show_accuracy=True, verbose=0)
-        print ('Loss: ' + str(loss))
-        print ('Score: ' + str(score))
-        scores.append(score)
-    
-    scores = np.array(scores)
-    print("Accuracy: " + str(scores.mean()) + " (+/- " + str(scores.std()/2) + ")")
+        if self.mode == 'test' or self.mode == 'both':
+            print('evaluating model...')
+            self.cross_validate()
 
-def get_predictions(filename, X, y, model, nb_epoch, batch_size, save_weights_file, load_weights_file, load_weights, datagen):
-    """
-    trains and predicts on the mnist data
-    """
-
-    if load_weights:
-        model.load_weights(load_weights_file)
-    else:
-        model = fit_model(model, X, y, nb_epoch, batch_size, save_weights_file, datagen)
-
-    test_data = np.genfromtxt(filename, delimiter=',', skip_header=1, dtype='float32')
-    test_data = test_data.reshape(test_data.shape[0], 1, 28, 28)
-    test_data /= 255
-
-    return model.predict_classes(test_data, batch_size = batch_size)
-
-def save_predictions(predictions, filename):
-    """
-    saves the predictions to file in a format that kaggle likes.
-    """
-
-    predictions_file = open(filename, "wb")
-    open_file_object = csv.writer(predictions_file, quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
-    open_file_object.writerow(['ImageId','Label'])
-    for i in range(0,28000):
-        open_file_object.writerow([i+1, predictions[i]])
-    predictions_file.close()
+        if self.mode == 'pred' or self.mode == 'both':
+            print('obtaining predictions...')
+            self.save_predictions(self.get_predictions())
 
 def main():
-    """
-    set up the test here!
-    """
-
-    mode = 'pred' # pred generates submission; test does cross-val; both is both
-    folds = 5
-    subset = 1 # percent of train file to utilize
-
-    load_weights = False
-    load_weights_file = 'weights/pp_3_12.hdf5'
-    save_weights_file = 'tmp/checkpoint_weights.hdf5'
-
-    train_file = 'data/train.csv'
-    test_file = 'data/test.csv'
-    out_file = 'solutions/answers_el_1_45.csv'
-
-    nb_epoch = 45
-    batch_size = 128
-    nb_classes = 10
-
-    X = None
-    y = None
-    datagen = None
-
-    if not load_weights:
-        print('loading data...')
-        X, y, datagen = load_data(train_file, nb_classes, subset = subset)
-
-    print('building model...')
-    model = build_keras(nb_classes)
-    
-    if mode == 'test' or mode == 'both':
-        print('evaluating model...')
-        cross_validate(model, X = X, y = y, folds = folds, nb_epoch = nb_epoch, batch_size = batch_size, 
-                                            save_weights_file = save_weights_file, datagen = datagen)
-
-    if mode == 'pred' or mode == 'both':
-        print('obtaining predictions...')
-        save_predictions(get_predictions(test_file, X = X, y = y, 
-                                            model = model, nb_epoch = nb_epoch, 
-                                            batch_size = batch_size, save_weights_file = save_weights_file,
-                                            load_weights_file = load_weights_file, load_weights = load_weights,
-                                            datagen = datagen), out_file)
-    return
+    network = Predictor()
+    network.run_basic()
 
 if __name__ == '__main__':
     main()
