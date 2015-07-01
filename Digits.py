@@ -40,15 +40,32 @@ import matplotlib.image as mpimg
 from matplotlib import interactive
 
 class Predictor:
-    def __init__(self):
-        self.mode = 'resu' # pred generates submission; test does cross-val; resu to resume; load to load
-        self.folds = 5
-        self.subset = 1 # percent of train file to utilize
+    """
+    predicts classes from mnist images
+    configure params in the __init__ section
+    call run once instantiated and parameterized correctly.
+    model architecture is established in build_keras()
+    preprocessing params are not yet in the __init__ list, but
+    will slowly be added.
 
-        self.only_load_weights = False
-        self.load_weights_file = 'tmp/checkpoint_weights.hdf5'
-        self.save_weights_file = 'tmp/checkpoint_weights.hdf5'
-        self.resume_from_epoch = 27
+    'issues':
+    xval mode doesn't make new models each fold
+    random displacement is too expensive still
+    batch iterators are a bit of a mess if you look too closely
+    """
+
+    def __init__(self):
+        """
+        sets the parameters for the Predictor:
+        mode:
+            pred - trains on full train, tests on full test, writes out predictions
+            xval - cross validation of model (see issues) and is very expensive
+            resu - resume training if interrupted by loading a checkpoint model, writes predictions after
+            load - load checkpoint model and write predictions
+        folds: for xval
+        subset: percent of training data to use during xval or model fitting
+        """
+        self.mode = 'resu'
 
         self.train_file = 'data/train.csv'
         self.test_file = 'data/test.csv'
@@ -57,11 +74,18 @@ class Predictor:
         self.nb_epoch = 45
         self.batch_size = 128
         self.nb_classes = 10
+        self.subset = 1
 
-        self.X = None
-        self.y = None
-        self.datagen = None
-        self.model = None
+        self.folds = 5
+
+        self.load_weights_file = 'tmp/checkpoint_weights.hdf5'
+        self.save_weights_file = 'tmp/checkpoint_weights.hdf5'
+        self.resume_from_epoch = 27
+
+        # self.X = None
+        # self.y = None
+        # self.datagen = None
+        # self.model = None
 
     def load_data(self):
         """ 
@@ -87,8 +111,6 @@ class Predictor:
 
         y = data[0::,0]
         y = np_utils.to_categorical(y, self.nb_classes)
-
-        
 
         self.datagen = ImageDataGenerator(featurewise_center=False,
                                             samplewise_center=False,
@@ -357,7 +379,7 @@ class Predictor:
         set up the test here!
         """
 
-        if not self.only_load_weights:
+        if mode != "load":
             print('loading data...')
             self.load_data()
         
