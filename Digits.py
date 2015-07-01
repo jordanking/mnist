@@ -173,24 +173,32 @@ def fit_model(model, X, y, nb_epoch, batch_size, save_weights_file, datagen):
         total_loss = 0
         current = 0
         for X_batch, y_batch in datagen.flow(X, y, batch_size):
-            X_batch, y_batch = batch_warp(X_batch, y_batch)
-            loss, accuracy = model.train(X_batch, y_batch, accuracy = True)
 
+            # prepare the batch with random augmentations
+            X_batch, y_batch = batch_warp(X_batch, y_batch)
+
+            # train on the batch
+            loss, accuracy = model.train(X_batch, y_batch, accuracy = True)
+            
+            # update the progress bar
             total_loss += loss * batch_size
             total_accuracy += accuracy * batch_size
-
             current += batch_size
             if current > X.shape[0]:
                 current = X.shape[0]
             else:
                 progbar.update(current, [('loss', loss), ('acc.', accuracy)])
         progbar.update(current, [('loss', total_loss/current), ('acc.', total_accuracy/current)])
+        
+        # checkpoints between epochs
         model.save_weights(save_weights_file, overwrite = True)
+    
     return model
 
 def cross_validate(model, X, y, folds, nb_epoch, batch_size, save_weights_file, datagen):
     ''' provides a simple cross validation measurement. It doen't make a new
-    model for each fold though, so it isn't actually cross validation... '''
+    model for each fold though, so it isn't actually cross validation... the
+    model just gets better with time for now. This is pretty expensive to run. '''
 
     kf = KFold(X.shape[0], folds)
     scores = []
@@ -234,14 +242,14 @@ def save_predictions(predictions, filename):
 
 def main():
 
-    mode = 'pred'
+    mode = 'pred' # pred generates submission; test does cross-val; both is both
     folds = 5
-    subset = 1
+    subset = 1 # percent of train file to utilize
 
     load_weights = False
     load_weights_file = 'weights/pp_3_12.hdf5'
-
     save_weights_file = 'tmp/checkpoint_weights.hdf5'
+
     train_file = 'data/train.csv'
     test_file = 'data/test.csv'
     out_file = 'solutions/answers_warp_4_100.csv'
