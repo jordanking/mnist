@@ -41,13 +41,14 @@ from matplotlib import interactive
 
 class Predictor:
     def __init__(self):
-        self.mode = 'pred' # pred generates submission; test does cross-val; both is both
+        self.mode = 'resu' # pred generates submission; test does cross-val; resu to resume; load to load
         self.folds = 5
         self.subset = 1 # percent of train file to utilize
 
-        self.load_weights = False
+        self.only_load_weights = False
         self.load_weights_file = 'tmp/checkpoint_weights.hdf5'
         self.save_weights_file = 'tmp/checkpoint_weights.hdf5'
+        self.resume_from_epoch = 27
 
         self.train_file = 'data/train.csv'
         self.test_file = 'data/test.csv'
@@ -256,6 +257,7 @@ class Predictor:
         model.add(Activation('softmax'))
 
         model.compile(loss='categorical_crossentropy', optimizer='adadelta')
+
         self.model = model
 
     def fit_model(self, X, y):
@@ -264,7 +266,7 @@ class Predictor:
         """
 
         for e in range(self.nb_epoch):
-            print('Epoch: ', e)
+            print('Epoch: ', e, ' of ', self.nb_epoch)
             progbar = Progbar(target=X.shape[0], verbose=True)
 
             # batch train with realtime data augmentation
@@ -320,11 +322,6 @@ class Predictor:
         trains and predicts on the mnist data
         """
 
-        if self.load_weights:
-            self.model.load_weights(self.load_weights_file)
-        else:
-            self.model = self.fit_model(self.X, self.y)
-
         test_data = np.genfromtxt(self.test_file, delimiter=',', skip_header=1, dtype='float32')
         test_data = test_data.reshape(test_data.shape[0], 1, 28, 28)
         test_data /= 255
@@ -334,6 +331,8 @@ class Predictor:
     def save_predictions(self, predictions):
         """
         saves the predictions to file in a format that kaggle likes.
+        :param predictions: A single dimensional list of classifications
+        :p
         """
 
         predictions_file = open(self.out_file, "wb")
@@ -343,29 +342,56 @@ class Predictor:
             open_file_object.writerow([i+1, predictions[i]])
         predictions_file.close()
 
-    def run_basic(self):
+    def resume(self):
+        """
+        resumes training if training is interrupted.
+        """
+        self.nb_epoch = self.nb_epoch - self.resume_from_epoch
+
+        self.model.load_weights(self.load_weights_file)
+
+        self.model = self.fit_model(self.X, self.y)
+
+    def run(self):
         """
         set up the test here!
         """
 
-        if not self.load_weights:
+        if not self.only_load_weights:
             print('loading data...')
             self.load_data()
-
+        
         print('building model...')
         self.build_keras()
-        
-        if self.mode == 'test' or self.mode == 'both':
+
+        if self.mode == 'xval':
             print('evaluating model...')
             self.cross_validate()
 
-        if self.mode == 'pred' or self.mode == 'both':
+        if self.mode == 'pred':
+            print('training model...')
+            self.model = self.fit_model(self.X, self.y)
+
+            print('obtaining predictions...')
+            self.save_predictions(self.get_predictions())
+
+        if self.mode == 'resu':
+            print('resuming training...')
+            self.resume()
+            
+            print('obtaining predictions...')
+            self.save_predictions(self.get_predictions())
+
+        if self.mode == 'load':
+            print('loading data...')
+            self.model = self.model.load_weights(self.load_weights_file)
+
             print('obtaining predictions...')
             self.save_predictions(self.get_predictions())
 
 def main():
     network = Predictor()
-    network.run_basic()
+    network.run()
 
 if __name__ == '__main__':
     main()
