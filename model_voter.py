@@ -10,12 +10,13 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 from matplotlib import interactive
 
-
 import csv as csv
 
 def tally_votes(model_files, data_file, out_file):
-    """ saves a model to out_file that is the mode of
-    all predictions in the model_files """
+    """ 
+    saves a model to out_file that is the mode of
+    all predictions in the model_files 
+    """
 
     # load all of the models
     votes = np.zeros((28000, len(model_files)))

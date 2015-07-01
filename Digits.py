@@ -30,9 +30,19 @@ from skimage.io import imshow
 from skimage.util import crop
 from skimage import transform, filters, exposure
 
+from scipy.ndimage.filters import gaussian_filter
+import math as math
+
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+from matplotlib import interactive
+
 def load_data(filename, nb_classes, subset = 1):
-    """ returns X and y - data and target - as numpy arrays, X normalized
-    and y made categorical. """
+    """ 
+    returns X and y - data and target - as numpy arrays, X normalized
+    and y made categorical.
+    :param filename: path to the data
+    """
 
     data = np.genfromtxt(filename, delimiter=',', skip_header=1, dtype='float32')
 
@@ -63,10 +73,35 @@ def load_data(filename, nb_classes, subset = 1):
 
     return [X, y, datagen]
 
+
+def image_warp(image, displacement_field_x, displacement_field_y):
+    """
+    expensive warping of an image given displacement field.
+    """
+    result = np.zeros(image.shape)
+
+    for row in xrange(image.shape[1]):
+        for col in xrange(image.shape[0]):
+            low_ii = row + int(math.floor(displacement_field_x[row, col]))
+            high_ii = row + int(math.ceil(displacement_field_x[row, col]))
+
+            low_jj = col + int(math.floor(displacement_field_y[row, col]))
+            high_jj = col + int(math.ceil(displacement_field_y[row, col]))
+
+            if low_ii < 0 or low_jj < 0 or high_ii >= image.shape[1] -1 \
+               or high_jj >= image.shape[0] - 1:
+                continue
+
+            res = image[low_ii, low_jj]/4 + image[low_ii, high_jj]/4 + \
+                    image[high_ii, low_jj]/4 + image[high_ii, high_jj]/4
+
+            result[row, col] = res
+    return result
+
 #### adapted from https://github.com/FlorianMuellerklein/lasagne_mnist/blob/master/helpers.py
 
 def batch_warp(X_batch, y_batch):
-    '''
+    """
     Data augmentation for feeding images into CNN.
     This example will randomly rotate all images in a given batch between -10 and 10 degrees
     and to random translations between -5 and 5 pixels in all directions.
@@ -74,7 +109,7 @@ def batch_warp(X_batch, y_batch):
     Random shearing between -20 and 20 degrees.
     Randomly applies sobel edge detector to 1/4th of the images in each batch.
     Randomly inverts 1/2 of the images in each batch.
-    '''
+    """
     PIXELS = 28
 
     # set empty copy to hold augmented images so that we don't overwrite
@@ -107,12 +142,39 @@ def batch_warp(X_batch, y_batch):
 
     tform = tform_center + tform_aug + tform_uncenter
 
+    # random distortions
+    sigma = 4
+    alpha = 34
+
+    d_x = np.random.uniform(low = -1, high = 1, size = (28,28))
+    d_y = np.random.uniform(low = -1, high = 1, size = (28,28))
+
+    d_x = gaussian_filter(d_x, sigma) * alpha
+    d_y = gaussian_filter(d_y, sigma) * alpha
+
+    # elastic_distortion_field = np.empty((2, 28, 28))
+    # for r in range(28):
+    #     for c in range(28):
+    #         elastic_distortion_field[0,r,c] = d_x[r,c]
+    #         elastic_distortion_field[1,r,c] = d_y[r,c]
+
     # images in the batch do the augmentation
+    # interactive(True)
+
     for j in range(X_batch.shape[0]):
+
+        # if j == 0:
+        #     plt.imshow(X_batch[j][0], cmap='Greys')
+        #     raw_input('press return to continue or q to end...')
+
+        # X_batch_aug[j][0] = transform._warps_cy._warp_fast(X_batch[j][0], elastic_distortion_field, (PIXELS, PIXELS))
+        X_batch_aug[j][0] = image_warp(X_batch[j][0], d_x, d_y)
+
         X_batch_aug[j][0] = transform._warps_cy._warp_fast(X_batch[j][0], tform.params, (PIXELS, PIXELS))
-
-        # return transform._warps_cy._warp_fast(X_batch[j][0], tform.params, (PIXELS, PIXELS))
-
+        
+        # if j == 0:
+        #     plt.imshow(X_batch_aug[j][0], cmap='Greys')
+        #     raw_input('press return to continue or q to end...')
 
     # use sobel edge detector filter on one quarter of the images
     indices_sobel = np.random.choice(X_batch_aug.shape[0], X_batch_aug.shape[0] / 4, replace = False)
@@ -125,6 +187,9 @@ def batch_warp(X_batch, y_batch):
 #### end adaption from https://github.com/FlorianMuellerklein/lasagne_mnist/blob/master/helpers.py
 
 def build_keras(nb_classes):
+    """
+    constructs the neural network model
+    """
 
     model = Sequential()
 
@@ -163,6 +228,9 @@ def build_keras(nb_classes):
     return model
 
 def fit_model(model, X, y, nb_epoch, batch_size, save_weights_file, datagen):
+    """
+    fits a model to some data
+    """
 
     for e in range(nb_epoch):
         print('Epoch: ', e)
@@ -196,9 +264,11 @@ def fit_model(model, X, y, nb_epoch, batch_size, save_weights_file, datagen):
     return model
 
 def cross_validate(model, X, y, folds, nb_epoch, batch_size, save_weights_file, datagen):
-    ''' provides a simple cross validation measurement. It doen't make a new
+    """
+    provides a simple cross validation measurement. It doen't make a new
     model for each fold though, so it isn't actually cross validation... the
-    model just gets better with time for now. This is pretty expensive to run. '''
+    model just gets better with time for now. This is pretty expensive to run.
+    """
 
     kf = KFold(X.shape[0], folds)
     scores = []
@@ -217,7 +287,9 @@ def cross_validate(model, X, y, folds, nb_epoch, batch_size, save_weights_file, 
     print("Accuracy: " + str(scores.mean()) + " (+/- " + str(scores.std()/2) + ")")
 
 def get_predictions(filename, X, y, model, nb_epoch, batch_size, save_weights_file, load_weights_file, load_weights, datagen):
-    """ trains and predicts on the mnist data """
+    """
+    trains and predicts on the mnist data
+    """
 
     if load_weights:
         model.load_weights(load_weights_file)
@@ -231,7 +303,9 @@ def get_predictions(filename, X, y, model, nb_epoch, batch_size, save_weights_fi
     return model.predict_classes(test_data, batch_size = batch_size)
 
 def save_predictions(predictions, filename):
-    ''' saves the predictions to file in a format that kaggle likes. '''
+    """
+    saves the predictions to file in a format that kaggle likes.
+    """
 
     predictions_file = open(filename, "wb")
     open_file_object = csv.writer(predictions_file, quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
@@ -241,6 +315,9 @@ def save_predictions(predictions, filename):
     predictions_file.close()
 
 def main():
+    """
+    set up the test here!
+    """
 
     mode = 'pred' # pred generates submission; test does cross-val; both is both
     folds = 5
@@ -252,9 +329,9 @@ def main():
 
     train_file = 'data/train.csv'
     test_file = 'data/test.csv'
-    out_file = 'solutions/answers_warp_4_100.csv'
+    out_file = 'solutions/answers_el_1_45.csv'
 
-    nb_epoch = 100
+    nb_epoch = 45
     batch_size = 128
     nb_classes = 10
 
@@ -281,7 +358,7 @@ def main():
                                             batch_size = batch_size, save_weights_file = save_weights_file,
                                             load_weights_file = load_weights_file, load_weights = load_weights,
                                             datagen = datagen), out_file)
-    return 1
+    return
 
 if __name__ == '__main__':
     main()
