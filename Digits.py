@@ -80,7 +80,7 @@ class Predictor:
 
         self.load_weights_file = 'tmp/checkpoint_weights.hdf5'
         self.save_weights_file = 'tmp/checkpoint_weights.hdf5'
-        self.resume_from_epoch = 27
+        self.resume_from_epoch = 32
 
         # self.X = None
         # self.y = None
@@ -379,7 +379,7 @@ class Predictor:
         set up the test here!
         """
 
-        if mode != "load":
+        if self.mode != "load":
             print('loading data...')
             self.load_data()
         
@@ -406,7 +406,7 @@ class Predictor:
 
         if self.mode == 'load':
             print('loading data...')
-            self.model = self.model.load_weights(self.load_weights_file)
+            self.model.load_weights(self.load_weights_file)
 
             print('obtaining predictions...')
             self.save_predictions(self.get_predictions())
