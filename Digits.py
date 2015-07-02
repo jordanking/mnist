@@ -65,13 +65,12 @@ class Predictor:
         folds: for xval
         subset: percent of training data to use during xval or model fitting
         """
-        self.mode = 'resu'
+        self.mode = 'pred'
 
         self.train_file = 'data/train.csv'
         self.test_file = 'data/test.csv'
-        self.out_file = 'solutions/answers_el_1_45.csv'
 
-        self.nb_epoch = 45
+        self.nb_epoch = 16
         self.batch_size = 128
         self.nb_classes = 10
         self.subset = 1
@@ -80,12 +79,9 @@ class Predictor:
 
         self.load_weights_file = 'tmp/checkpoint_weights.hdf5'
         self.save_weights_file = 'tmp/checkpoint_weights.hdf5'
-        self.resume_from_epoch = 32
+        self.resume_from_epoch = 35
 
-        # self.X = None
-        # self.y = None
-        # self.datagen = None
-        # self.model = None
+        self.out_file = 'solutions/answers_el_1_16.csv'
 
     def load_data(self):
         """ 
@@ -267,7 +263,7 @@ class Predictor:
 
         model.add(Flatten())
 
-        model.add(Dense(32*196, 512))
+        model.add(Dense(16*196*2, 512))
         model.add(Activation('relu'))
         model.add(Dropout(0.5))
 
@@ -372,7 +368,7 @@ class Predictor:
 
         self.model.load_weights(self.load_weights_file)
 
-        self.model = self.fit_model(self.X, self.y)
+        self.fit_model(self.X, self.y)
 
     def run(self):
         """
